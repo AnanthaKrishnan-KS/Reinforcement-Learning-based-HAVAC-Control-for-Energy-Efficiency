@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HVAC Q-Learning Agent — Live Demo</title>
+<style>
+:root{--bg:#f4f8fb;--card:#fff;--ink:#1b2430;--mute:#5c6b73;--line:#d8e3e8;--accent:#065a82;--band:rgba(28,114,147,.15);--heat:#b85042;--cool:#065a82;--off:#a9b5bc;--out:#9aa7ae;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1720;--card:#17212c;--ink:#e8eef2;--mute:#9fb0ba;--line:#2a3a47;--accent:#5fb4d9;--band:rgba(74,163,196,.2);--heat:#e07b6a;--cool:#5fb4d9;--off:#4b5a64;--out:#6d7c86}}
+:root[data-theme="dark"]{--bg:#0f1720;--card:#17212c;--ink:#e8eef2;--mute:#9fb0ba;--line:#2a3a47;--accent:#5fb4d9;--band:rgba(74,163,196,.2);--heat:#e07b6a;--cool:#5fb4d9;--off:#4b5a64;--out:#6d7c86}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:clamp(22px,4vw,32px);margin:0 0 4px;line-height:1.2}
+h2{font-size:15px;margin:0 0 8px}
+.sub{color:var(--mute);margin:0 0 16px;max-width:70ch}
+.grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:14px;margin-bottom:14px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 12px;border-radius:8px;cursor:pointer}
+button.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+label{color:var(--mute);font-size:13px;display:flex;align-items:center;gap:6px}
+canvas{width:100%;height:270px;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--mute);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.stat b{display:block;font-size:20px}
+.stat span{font-size:12px;color:var(--mute)}
+@media(max-width:520px){.stats{grid-template-columns:repeat(2,1fr)}}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+.q{display:grid;grid-template-columns:48px 1fr 56px;gap:8px;align-items:center;margin:6px 0;font-size:13px}
+.bar{height:10px;border-radius:5px;background:var(--line);overflow:hidden}
+.bar div{height:100%;border-radius:5px}
+.q.pick{font-weight:700}
+.note{color:var(--mute);font-size:12.5px;margin:8px 0 0}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-weight:600}
+ul{margin:6px 0 0;padding-left:18px}
+li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>HVAC Control Agent — Live Demo</h1>
+  <p class="sub">A tabular Q-learning agent trained to keep an office zone at 23&nbsp;°C while using as little heating and cooling as possible. Everything runs in your browser: the simulator below is the same thermal model the agent was trained on.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="controls">
+        <div class="seg" id="modes"></div>
+      </div>
+      <div class="controls">
+        <button id="play">▶ Play</button>
+        <button id="step">Step</button>
+        <button id="reset">New day</button>
+        <label>Speed <input type="range" id="speed" min="1" max="10" value="6"></label>
+      </div>
+      <canvas id="chart"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>Zone temp</span>
+        <span><i style="background:var(--out)"></i>Outside temp</span>
+        <span><i style="background:var(--band)"></i>Comfort band (23 ± 1 °C)</span>
+        <span><i style="background:var(--heat)"></i>Heat</span>
+        <span><i style="background:var(--cool)"></i>Cool</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="sTime">00:00</b><span>Time of day</span></div>
+        <div class="stat"><b id="sOk">—</b><span>In comfort band</span></div>
+        <div class="stat"><b id="sEn">0</b><span>HVAC-on steps</span></div>
+        <div class="stat"><b id="sR">0</b><span>Total reward</span></div>
+      </div>
+      <p class="note" id="status">Press Play to simulate a 24-hour day (96 steps of 15 minutes).</p>
+    </div>
+
+    <div class="card">
+      <h2>What the agent sees right now</h2>
+      <div class="mono" id="state" style="font-size:18px">(6, 3, 0)</div>
+      <p class="note" id="decode"></p>
+      <h2 style="margin-top:14px">Learned Q-values</h2>
+      <div id="qs"></div>
+      <p class="note">Higher (less negative) = better expected return. The agent picks the largest. In the two comparison modes the Q-values are shown for reference only.</p>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Last steps: state → action → reward → next temperature</h2>
+      <div class="scroll"><table><thead><tr><th>Time</th><th>State</th><th>Action</th><th>Reward</th><th>Next temp</th></tr></thead><tbody id="log"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Benchmark: 200 random days per policy</h2>
+      <button id="bench">Run benchmark</button>
+      <div class="scroll" style="margin-top:8px"><table><thead><tr><th>Policy</th><th>Reward/day</th><th>Comfort</th><th>HVAC steps</th></tr></thead><tbody id="benchOut"><tr><td colspan="4" style="color:var(--mute)">Not run yet</td></tr></tbody></table></div>
+      <p class="note">Agent is evaluated greedily (no exploration). Days start from random temperatures and include sensor-like noise, so numbers vary slightly per run.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>About this project</h2>
+    <ul>
+      <li><b>Problem:</b> each 15 minutes choose OFF, HEAT or COOL for one office zone with solar gain and daytime occupancy.</li>
+      <li><b>State:</b> (temperature error bin, outside-temperature bin, 3-hour time block) — 13 × 8 × 8 = 832 states.</li>
+      <li><b>Reward:</b> −[(T − 23)² + 0.5 × energy], so comfort and energy use trade off.</li>
+      <li><b>Training:</b> tabular Q-learning, α = 0.15, γ = 0.95, ε-greedy decaying from 1.0, 400 episodes.</li>
+      <li><b>Caveat:</b> the environment is a simplified synthetic model, not a real building. Results show that the RL formulation works, not real-world energy savings.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const Q=[-87.45,-55.06,-116.71,-139.97,-47.37,-150.56,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-13.52,-10.23,-8.17,-109.35,-71.1,-138.71,-109.35,-54.03,-128.65,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-11.16,0.0,-8.17,0.0,0.0,0.0,0.0,0.0,0.0,-81.59,-44.97,-92.79,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-5.0,-2.88,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-22.58,-9.56,-21.5,-9.2,-9.86,-11.57,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-5.58,-4.45,-12.73,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-34.54,-21.54,-73.4,-40.93,-22.13,-104.51,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-15.27,-6.42,-14.18,-32.48,-15.21,-75.96,-27.72,-17.94,-88.26,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-4.22,-5.32,-5.48,0.0,0.0,0.0,0.0,0.0,0.0,-21.14,-12.9,-58.01,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.68,-1.99,-5.52,0.0,0.0,0.0,0.0,0.0,0.0,-7.23,-2.68,-16.11,-8.18,-4.8,-12.77,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-2.71,-4.33,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-27.82,-14.21,-57.85,-27.86,-14.63,-77.54,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-9.23,-9.4,-21.69,-14.47,-10.41,-53.82,-20.05,-9.35,-50.45,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-5.31,-3.26,-3.44,0.0,0.0,0.0,0.0,0.0,0.0,-16.81,-8.14,-33.67,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-6.07,-4.29,-14.6,0.0,0.0,0.0,0.0,0.0,0.0,-7.07,-3.41,-17.63,-6.23,-2.53,-14.81,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-2.22,-1.16,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-5.86,-1.45,-8.11,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-16.62,-9.2,-37.75,-17.15,-9.77,-36.12,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-12.35,-9.47,-17.52,-8.34,-8.18,-29.75,-11.55,-7.01,-28.14,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.43,-2.88,-7.68,0.0,0.0,0.0,0.0,0.0,0.0,-9.28,-6.68,-22.9,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-5.93,-5.18,-7.63,0.0,0.0,0.0,0.0,0.0,0.0,-4.45,-2.21,-12.75,-4.91,-5.0,-11.22,0.0,0.0,0.0,0.0,0.0,0.0,-1.02,-0.35,0.0,-2.48,-1.48,-5.43,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.42,-2.32,-8.06,0.0,0.0,0.0,0.0,0.0,0.0,-1.85,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-0.94,-0.1,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-0.46,-0.94,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-1.37,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-12.87,-8.0,-25.22,-11.06,-7.35,-24.3,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-10.36,-7.42,-17.61,-6.51,-6.42,-17.22,-7.84,-7.34,-19.91,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.19,-1.89,-10.85,0.0,0.0,0.0,0.0,0.0,0.0,-6.66,-6.79,-16.76,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-4.94,-2.38,-12.34,0.0,0.0,0.0,0.0,0.0,0.0,-4.72,-4.37,-10.47,-5.91,-6.26,-5.98,0.0,0.0,0.0,0.0,0.0,0.0,-2.39,-1.95,-2.76,-2.57,-2.24,-9.55,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-5.83,-6.2,-6.66,0.0,0.0,0.0,0.0,0.0,0.0,-3.49,-3.05,-3.32,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.07,-2.43,-3.19,-3.73,-4.41,-3.83,-2.2,-2.03,-2.51,-2.04,-2.03,-2.91,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-2.43,-2.72,-3.11,-1.68,-2.31,-1.43,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-7.56,-7.32,-15.33,-7.7,-7.12,-14.72,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-7.66,-7.07,-14.59,-6.73,-6.71,-14.46,-7.37,-7.22,-11.31,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-1.54,-1.2,-6.78,0.0,0.0,0.0,0.0,0.0,0.0,-7.32,-8.22,-10.7,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.04,-3.16,-7.92,0.0,0.0,0.0,0.0,0.0,0.0,-7.94,-8.39,-8.04,-8.31,-8.37,-8.53,0.0,0.0,0.0,0.0,0.0,0.0,-2.66,-3.12,-4.72,-3.16,-3.51,-7.28,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-8.88,-10.18,-9.29,0.0,0.0,0.0,0.0,0.0,0.0,-3.23,-4.35,-5.48,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-8.52,-8.87,-8.71,-8.53,-11.76,-8.7,-4.95,-5.11,-5.13,-3.77,-4.13,-5.25,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-8.35,-13.31,-8.86,-6.85,-10.87,-7.68,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-7.06,-7.8,-10.96,-7.04,-7.25,-9.72,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-6.79,-7.5,-9.92,-6.72,-6.82,-8.78,-6.69,-7.69,-9.8,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-0.29,-2.4,-4.63,0.0,0.0,0.0,0.0,0.0,0.0,-7.46,-9.38,-8.98,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-1.38,-4.24,-4.86,0.0,0.0,0.0,0.0,0.0,0.0,-8.25,-8.74,-8.37,-8.98,-11.93,-9.14,0.0,0.0,0.0,0.0,0.0,0.0,-2.47,-5.62,-4.16,-2.09,-5.35,-4.93,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-9.68,-14.24,-9.36,0.0,0.0,0.0,0.0,0.0,0.0,-3.17,-6.98,-4.53,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-9.2,-14.45,-9.15,-9.13,-17.44,-9.03,-4.96,-9.47,-5.58,-4.28,-8.73,-4.71,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-10.11,-21.6,-8.84,-7.86,-17.31,-7.56,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-6.68,-8.33,-6.87,-6.46,-7.66,-6.73,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-6.55,-9.51,-6.72,-5.99,-6.4,-6.14,-6.75,-7.29,-6.94,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-0.7,-4.92,-1.89,0.0,0.0,0.0,0.0,0.0,0.0,-7.79,-10.55,-7.97,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-2.03,-6.54,-3.22,0.0,0.0,0.0,0.0,0.0,0.0,-8.29,-11.82,-8.25,-9.36,-15.6,-9.05,0.0,0.0,0.0,0.0,0.0,0.0,-3.5,-8.96,-3.05,-3.83,-8.18,-3.45,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-10.6,-20.9,-9.53,0.0,0.0,0.0,0.0,0.0,0.0,-4.44,-13.13,-3.78,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-11.16,-24.17,-9.04,-11.73,-27.04,-9.15,-7.07,-15.37,-5.03,-5.48,-13.99,-4.49,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-13.28,-28.67,-9.05,-10.96,-24.69,-8.03,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-5.89,-8.44,-5.71,-5.14,-5.52,-5.11,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-7.04,-12.25,-6.68,-4.79,-4.75,-4.84,-4.9,-5.5,-5.16,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-2.92,-9.64,-1.09,0.0,0.0,0.0,0.0,0.0,0.0,-7.21,-10.93,-7.01,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-4.5,-14.52,-2.09,0.0,0.0,0.0,0.0,0.0,0.0,-7.55,-13.79,-7.72,-10.49,-20.66,-8.84,0.0,0.0,0.0,0.0,0.0,0.0,-5.33,-11.83,-3.09,-4.88,-11.83,-3.14,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-15.48,-36.87,-10.38,0.0,0.0,0.0,0.0,0.0,0.0,-7.51,-21.84,-4.39,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-18.18,-29.28,-10.29,-19.02,-46.98,-11.1,-12.21,-20.4,-7.06,-7.49,-22.41,-5.17,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-23.32,-57.33,-11.64,-18.93,-39.94,-9.91,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.88,-4.51,-3.59,-1.21,-4.02,-0.85,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-6.71,-16.14,-6.52,-0.94,-2.16,-1.57,-1.95,-2.03,-1.55,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-4.61,-13.75,-1.99,0.0,0.0,0.0,0.0,0.0,0.0,-5.89,-12.03,-4.63,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-9.05,-24.73,-3.94,0.0,0.0,0.0,0.0,0.0,0.0,-6.9,-10.67,-5.28,-10.72,-27.25,-8.58,0.0,0.0,0.0,0.0,0.0,0.0,-9.58,-18.36,-4.79,-9.11,-26.49,-4.42,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-22.87,-50.15,-13.78,0.0,0.0,0.0,0.0,0.0,0.0,-15.19,-35.76,-6.74,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-26.07,-87.13,-14.01,-37.97,-63.45,-18.08,-18.49,-42.47,-10.15,-16.98,-34.2,-8.58,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-35.37,-75.46,-17.14,-28.38,-71.27,-14.33,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-2.98,-3.34,-0.6,-1.65,0.0,-0.89,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-6.55,-9.5,-5.93,0.0,0.0,0.0,0.0,-6.34,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-7.77,-16.82,-4.07,0.0,0.0,0.0,0.0,0.0,0.0,-4.22,-4.1,-3.48,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-16.29,-49.3,-6.68,0.0,0.0,0.0,0.0,0.0,0.0,-4.32,-13.75,-2.82,-12.98,-56.23,-8.81,0.0,0.0,0.0,0.0,0.0,0.0,-6.78,-39.27,-7.02,-13.46,-24.56,-7.27,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-27.44,-121.58,-20.59,0.0,0.0,0.0,0.0,0.0,0.0,-26.84,-79.65,-11.83,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-28.44,-181.68,-20.41,-49.89,-237.35,-28.73,-33.45,-125.8,-18.66,-25.75,-97.34,-14.79,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-62.07,-181.94,-29.9,-47.66,-145.94,-26.56,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.74,-5.19,-2.05,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-3.09,-5.68,0.0,0.0,0.0,0.0,0.0,-5.41,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-9.09,-27.52,-7.86,0.0,0.0,0.0,0.0,0.0,0.0,-3.3,-5.55,-1.7,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-23.43,-68.57,-13.34,0.0,0.0,0.0,0.0,0.0,0.0,-4.05,-7.49,-2.55,-12.96,-13.97,-12.74,0.0,0.0,0.0,0.0,0.0,0.0,-14.43,-39.48,-12.27,-26.24,-80.31,-14.26,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-67.22,-117.43,-35.0,0.0,0.0,0.0,0.0,0.0,0.0,-39.61,-134.14,-18.78,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-88.32,-61.19,-33.71,-143.98,-273.55,-45.24,-77.86,-163.71,-29.09,-66.62,-132.65,-27.32,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-167.73,-205.67,-45.91,-112.75,-185.62,-44.19,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-2.15,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-4.45,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-2.42,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-26.38,-38.68,-19.14,0.0,0.0,0.0,0.0,0.0,0.0,-5.33,-7.6,-4.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-113.5,-124.79,-59.01,0.0,0.0,0.0,0.0,0.0,0.0,-5.11,0.0,0.0,-25.74,-38.56,-20.14,0.0,0.0,0.0,0.0,0.0,0.0,-127.7,-167.2,-70.55,-129.55,-151.5,-59.92,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-148.73,-157.63,-91.92,0.0,0.0,0.0,0.0,0.0,0.0,-167.01,-181.53,-55.12,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-229.01,-246.31,-145.92,-303.97,-406.69,-133.58,-176.33,-218.38,-62.96,-184.42,-185.09,-88.01,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-207.71,-236.82,-115.49,-191.61,-219.24,-111.52,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0];
+const TS=23,N=96,ACT=["OFF","HEAT","COOL"];
+// CORE START
+function pyRound(x){const f=Math.floor(x),d=x-f;return d<.5?f:d>.5?f+1:(f%2===0?f:f+1)}
+const clip=(x,a,b)=>Math.min(b,Math.max(a,x));
+const outT=t=>24+9*Math.sin((t/N*24-9)/24*2*Math.PI);
+function randn(){let u=0;while(!u)u=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random())}
+function enc(T,t){const h=Math.floor(t/N*24)%24;return[clip(pyRound(T-TS),-6,6)+6,clip(pyRound((outT(t)-15)/3),0,7),Math.floor(h/3)]}
+const qv=s=>{const i=((s[0]*8+s[1])*8+s[2])*3;return[Q[i],Q[i+1],Q[i+2]]};
+const argmax=v=>v[0]>=v[1]&&v[0]>=v[2]?0:(v[1]>=v[2]?1:2);
+function newDay(){const T0=TS+Math.random()*6-3;return{t:0,T:T0,R:0,ok:0,e:0,acts:[],temps:[T0],log:[]}}
+function pick(mode,d){if(mode==="agent")return argmax(qv(enc(d.T,d.t)));if(mode==="thermo")return d.T>TS+.5?2:d.T<TS-.5?1:0;return 0}
+function stepDay(d,a){const t=d.t,h=t/4,o=outT(t);let sol=0;if(h>=6&&h<=18)sol=6*Math.max(0,Math.sin((h-6)/12*Math.PI));const occ=(h>=9&&h<=18)?2:0;const u=a===1?1.4:a===2?-1.4:0,en=a?1:0;const s0=enc(d.T,t);d.T+=.06*(o-d.T)+u+.05*(1+sol+occ)+.15*randn();const r=-((d.T-TS)**2+.5*en);d.t++;d.R+=r;d.e+=en;if(Math.abs(d.T-TS)<=1)d.ok++;d.acts.push(a);d.temps.push(d.T);d.log.push({t,s:s0,a,r,T:d.T});return d.t>=N}
+function bench(mode,n){let R=0,ok=0,e=0;for(let i=0;i<n;i++){const d=newDay();while(!stepDay(d,pick(mode,d)));R+=d.R;ok+=d.ok;e+=d.e}return{R:R/n,ok:ok/n/N*100,e:e/n}}
+// CORE END
+
+const MODES=[["agent","Learned agent"],["thermo","Thermostat (±0.5 °C)"],["off","HVAC off"]];
+let mode="agent",d=newDay(),timer=null;
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmtT=t=>{const m=t*15;return String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0")};
+
+function draw(){
+  const c=$("chart"),dpr=window.devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;
+  c.width=W*dpr;c.height=H*dpr;const x=c.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);
+  const L=34,R=8,T=8,B=38,pw=W-L-R,ph=H-T-B,y0=12,y1=34;
+  const X=t=>L+t/N*pw,Y=v=>T+(y1-v)/(y1-y0)*ph;
+  x.font="11px system-ui,sans-serif";x.textBaseline="middle";
+  x.fillStyle=css("--band");x.fillRect(L,Y(TS+1),pw,Y(TS-1)-Y(TS+1));
+  x.strokeStyle=css("--line");x.fillStyle=css("--mute");x.lineWidth=1;x.textAlign="right";
+  for(let v=12;v<=34;v+=4){x.beginPath();x.moveTo(L,Y(v));x.lineTo(L+pw,Y(v));x.stroke();x.fillText(v,L-5,Y(v))}
+  x.textAlign="center";for(let h=0;h<=24;h+=6){x.fillText(String(h).padStart(2,"0")+":00",X(h*4),H-B+22)}
+  x.setLineDash([5,4]);x.strokeStyle=css("--mute");x.beginPath();x.moveTo(L,Y(TS));x.lineTo(L+pw,Y(TS));x.stroke();x.setLineDash([]);
+  x.strokeStyle=css("--out");x.lineWidth=1.5;x.beginPath();for(let t=0;t<=N;t++){t?x.lineTo(X(t),Y(outT(t))):x.moveTo(X(t),Y(outT(t)))}x.stroke();
+  const col=[css("--off"),css("--heat"),css("--cool")];
+  d.acts.forEach((a,i)=>{x.fillStyle=col[a];x.fillRect(X(i),H-B+6,Math.max(1,X(i+1)-X(i)-.5),a?10:4)});
+  x.strokeStyle=css("--accent");x.lineWidth=2.5;x.beginPath();d.temps.forEach((v,i)=>{i?x.lineTo(X(i),Y(clip(v,y0,y1))):x.moveTo(X(i),Y(clip(v,y0,y1)))});x.stroke();
+  const last=d.temps.length-1;x.fillStyle=css("--accent");x.beginPath();x.arc(X(last),Y(clip(d.temps[last],y0,y1)),4,0,7);x.fill();
+}
+
+function update(){
+  const done=d.t>=N,s=enc(d.T,Math.min(d.t,N)),q=qv(s),g=argmax(q),next=pick(mode,d);
+  $("sTime").textContent=fmtT(d.t);
+  $("sOk").textContent=d.t?Math.round(d.ok/d.t*100)+"%":"—";
+  $("sEn").textContent=d.e;$("sR").textContent=d.R.toFixed(1);
+  $("state").textContent="("+s.join(", ")+")";
+  const dev=s[0]-6,h0=s[2]*3;
+  $("decode").textContent="Zone "+d.T.toFixed(2)+" °C ("+(dev>=0?"+":"")+dev+" °C from set-point, binned) · outside ≈ "+(15+3*s[1])+" °C · "+String(h0).padStart(2,"0")+":00–"+String(h0+3).padStart(2,"0")+":00";
+  const mn=Math.min(...q),mx=Math.max(...q),cols=["--off","--heat","--cool"];
+  $("qs").innerHTML=q.map((v,i)=>{const w=mx===mn?50:12+88*(v-mn)/(mx-mn);return'<div class="q'+(i===next&&!done?" pick":"")+'"><span>'+ACT[i]+'</span><div class="bar"><div style="width:'+w+'%;background:var('+cols[i]+')"></div></div><span class="mono">'+v.toFixed(1)+'</span></div>'}).join("");
+  $("log").innerHTML=d.log.slice(-8).reverse().map(l=>"<tr><td>"+fmtT(l.t)+'</td><td class="mono">('+l.s.join(",")+")</td><td>"+ACT[l.a]+"</td><td>"+l.r.toFixed(2)+"</td><td>"+l.T.toFixed(2)+" °C</td></tr>").join("")||'<tr><td colspan="5" style="color:var(--mute)">No steps yet</td></tr>';
+  if(done)$("status").textContent="Day complete — "+Math.round(d.ok/N*100)+"% of the day in the comfort band, HVAC on for "+d.e+" of 96 steps.";
+  draw();
+}
+function tick(){if(d.t>=N){stop();return}stepDay(d,pick(mode,d));if(d.t>=N)stop();update()}
+function stop(){clearInterval(timer);timer=null;$("play").textContent="▶ Play"}
+function play(){if(d.t>=N)d=newDay();$("status").textContent="Simulating…";$("play").textContent="⏸ Pause";timer=setInterval(tick,Math.round(900/$("speed").value**1.3))}
+function restart(){stop();d=newDay();$("status").textContent="Press Play to simulate a 24-hour day (96 steps of 15 minutes).";update()}
+
+$("modes").innerHTML=MODES.map(m=>'<button data-m="'+m[0]+'">'+m[1]+"</button>").join("");
+function markModes(){document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("on",b.dataset.m===mode))}
+$("modes").onclick=e=>{const m=e.target.dataset&&e.target.dataset.m;if(m){mode=m;markModes();restart()}};
+$("play").onclick=()=>timer?stop():play();
+$("step").onclick=()=>{stop();if(d.t>=N)d=newDay();stepDay(d,pick(mode,d));update()};
+$("reset").onclick=restart;
+$("speed").oninput=()=>{if(timer){stop();play()}};
+$("bench").onclick=()=>{const rows=MODES.map(m=>{const r=bench(m[0],200);return"<tr><td>"+m[1]+"</td><td>"+r.R.toFixed(1)+"</td><td>"+r.ok.toFixed(1)+"%</td><td>"+r.e.toFixed(1)+"</td></tr>"});$("benchOut").innerHTML=rows.join("")};
+window.addEventListener("resize",draw);
+matchMedia("(prefers-color-scheme:dark)").addEventListener("change",draw);
+markModes();update();
+</script>
+</body>
+</html>
